@@ -59,7 +59,7 @@ If scripts don't work, follow these manual steps:
 ### 1. Start Nginx
 ```bash
 docker exec call-service service nginx start
-docker exec call-service service nginx status
+   docker exec call-service service nginx status
 ```
 
 ### 2. Start PHP-FPM
