@@ -2,23 +2,23 @@
 
 ## Issues Fixed
 
-1. **Port 8883 returning 503**: Fixed by adding port 8883 to proxy-server and creating custom nginx configuration
-2. **Root URL (http://138.68.55.52/) connection refused**: Fixed by adding default server block for IP address access
+1. **Port 8883 returning 502 Bad Gateway**: Fixed by changing call-service to directly expose port 8883 (bypassing nginx-proxy)
+2. **Root URL (http://138.68.55.52/) connection refused**: Fixed by direct port exposure
+
+## Solution
+
+call-service now directly exposes port 8883, similar to admin-portal on port 8884. This bypasses nginx-proxy entirely for port 8883.
 
 ## Changes Made
 
 ### 1. laravel-wegro-docker/docker-compose.yml
-- Added port `8883:8883` to proxy-server service
+- **Removed** port `8883:8883` from proxy-server (no longer needed)
+- **Removed** custom nginx configs (callcircle-8883.conf, default-ip.conf)
 
-### 2. laravel-wegro-docker/nginx/conf.d/callcircle-8883.conf (NEW)
-- Created custom nginx server block for port 8883
-- Proxies HTTP requests to call-service:80
-- Handles both domain name and IP address access
-
-### 3. laravel-wegro-docker/nginx/conf.d/default-ip.conf (NEW)
-- Created default server block for port 80
-- Handles direct IP address access (138.68.55.52)
-- Proxies to call-service when available
+### 2. call-circle-docker/docker/composes/docker-compose.prod.yml
+- **Changed** from `expose: - "80"` to `ports: - "8883:80"` (direct port mapping)
+- **Removed** VIRTUAL_HOST environment variables (not needed for direct exposure)
+- **Added** `container_name: call-service` for consistency
 
 ## Deployment Steps
 
@@ -68,58 +68,53 @@ curl -I http://138.68.55.52/
 
 ## Troubleshooting
 
-### Port 8883 still returns 503
+### Port 8883 still returns 502
 
 1. **Check if call-service is running:**
    ```bash
    docker ps | grep call-service
    ```
 
-2. **Check if call-service is on the correct network:**
+2. **Check if port 8883 is mapped:**
    ```bash
-   docker inspect call-service | grep -A 5 Networks
-   # Should show: wegro_development_network
+   docker ps | grep call-service
+   # Should show: 0.0.0.0:8883->80/tcp
    ```
 
-3. **Check proxy-server can reach call-service:**
-   ```bash
-   docker exec proxy-server ping -c 2 call-service
-   ```
-
-4. **Check nginx configuration:**
-   ```bash
-   docker exec proxy-server nginx -t
-   docker exec proxy-server cat /etc/nginx/conf.d/callcircle-8883.conf
-   ```
-
-### Root URL still refuses connection
-
-1. **Check if proxy-server is listening on port 80:**
-   ```bash
-   docker ps | grep proxy-server
-   # Should show: 0.0.0.0:80->80/tcp
-   ```
-
-2. **Check firewall:**
+3. **Check firewall:**
    ```bash
    sudo ufw status
-   # Should show: 80/tcp ALLOW
+   # Port 8883 should be allowed
    ```
 
-3. **Check nginx logs:**
+4. **Check call-service logs:**
    ```bash
-   docker logs proxy-server
+   docker logs call-service
    ```
+
+5. **Test from inside container:**
+   ```bash
+   docker exec call-service curl -I http://localhost/
+   ```
+
+### Port conflict error
+
+If you get a port conflict, check what's using port 8883:
+```bash
+sudo lsof -i :8883
+# or
+sudo netstat -tulpn | grep 8883
+```
 
 ## Important Notes
 
-- **Port 8883** is now handled by proxy-server, not call-service directly
-- **call-service** should use `expose: - "80"` in production (already configured in docker-compose.prod.yml)
-- **VIRTUAL_HOST** environment variable must be set in call-service's .env file
-- The custom nginx configs are included by nginx-proxy automatically
+- **Port 8883** is now directly exposed by call-service (bypassing nginx-proxy)
+- **call-service** uses `ports: - "8883:80"` for direct port mapping
+- **No VIRTUAL_HOST** environment variables needed (direct exposure)
+- **Architecture matches admin-portal** on port 8884
 
 ## Network Configuration
 
-Both proxy-server and call-service must be on the same Docker network:
+call-service must be on the Docker network:
 - Network name: `wegro_development_network`
-- This is configured in both docker-compose files
+- Configured in docker-compose.prod.yml
